@@ -28,19 +28,18 @@ import (
 	"github.com/containerd/containerd/cio"
 	"github.com/containerd/containerd/namespaces"
 	"github.com/containerd/containerd/oci"
+	"github.com/containerd/containerd/sandbox"
 	"github.com/pkg/errors"
 
-	fcclient "github.com/firecracker-microvm/firecracker-containerd/firecracker-control/client"
 	"github.com/firecracker-microvm/firecracker-containerd/proto"
 	"github.com/firecracker-microvm/firecracker-containerd/runtime/firecrackeroci"
 )
 
 const (
-	containerdAddress      = "/run/firecracker-containerd/containerd.sock"
-	containerdTTRPCAddress = containerdAddress + ".ttrpc"
-	namespaceName          = "firecracker-containerd-example"
-	macAddress             = "AA:FC:00:00:00:01"
-	hostDevName            = "tap0"
+	containerdAddress = "/run/firecracker-containerd/containerd.sock"
+	namespaceName     = "firecracker-containerd-example"
+	macAddress        = "AA:FC:00:00:00:01"
+	hostDevName       = "tap0"
 )
 
 func main() {
@@ -78,16 +77,8 @@ func taskWorkflow(containerCIDR, gateway, snapshotter string) (err error) {
 		return errors.Wrapf(err, "creating container")
 	}
 
-	fcClient, err := fcclient.New(containerdTTRPCAddress)
-	if err != nil {
-		return err
-	}
-
-	defer fcClient.Close()
-
 	vmID := "fc-example"
 	createVMRequest := &proto.CreateVMRequest{
-		VMID: vmID,
 		// Enabling Go Race Detector makes in-microVM binaries heavy in terms of CPU and memory.
 		MachineCfg: &proto.FirecrackerMachineConfiguration{
 			VcpuCount:  2,
@@ -108,13 +99,17 @@ func taskWorkflow(containerCIDR, gateway, snapshotter string) (err error) {
 		}}
 	}
 
-	_, err = fcClient.CreateVM(ctx, createVMRequest)
+	fcSandbox, err := client.NewSandbox(ctx, "firecracker", vmID,
+		containerd.WithSandboxSpec(&sandbox.Spec{}),
+		// TODO: the majority of create VM request parameters should move to sandbox spec
+		containerd.WithSandboxExtension("firecracker-create-request", createVMRequest),
+	)
 	if err != nil {
-		return errors.Wrap(err, "failed to create VM")
+		return errors.Wrap(err, "creating sandbox")
 	}
 
 	defer func() {
-		_, stopErr := fcClient.StopVM(ctx, &proto.StopVMRequest{VMID: vmID})
+		stopErr := fcSandbox.Stop(ctx)
 		if stopErr != nil {
 			log.Printf("failed to stop VM, err: %v\n", stopErr)
 		}
@@ -134,7 +129,7 @@ func taskWorkflow(containerCIDR, gateway, snapshotter string) (err error) {
 			firecrackeroci.WithVMID(vmID),
 			firecrackeroci.WithVMNetwork,
 		),
-		containerd.WithRuntime("aws.firecracker", nil),
+		containerd.WithRuntime("aws.firecracker", fcSandbox.Descriptor()),
 	)
 	if err != nil {
 		return err
