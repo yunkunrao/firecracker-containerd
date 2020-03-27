@@ -350,7 +350,12 @@ func (s *service) StartShim(shimCtx context.Context, containerID, containerdBina
 		return "", err
 	}
 
-	fcControlClient := fccontrolTtrpc.NewFirecrackerClient(client.Client())
+	conn, err := client.Client()
+	if err != nil {
+		return "", err
+	}
+
+	fcControlClient := fccontrolTtrpc.NewFirecrackerClient(conn)
 
 	_, err = fcControlClient.CreateVM(shimCtx, &proto.CreateVMRequest{
 		VMID:                     s.vmID,
@@ -502,6 +507,8 @@ func (s *service) createVM(requestCtx context.Context, request *proto.CreateVMRe
 	if err != nil {
 		return errors.Wrapf(err, "failed to build VM configuration")
 	}
+
+	s.logger.Infof("machine cfg: %+v", s.machineConfig)
 
 	opts := []firecracker.Opt{
 		firecracker.WithLogger(s.logger),
@@ -796,6 +803,8 @@ func (s *service) Create(requestCtx context.Context, request *taskAPI.CreateTask
 		logger.WithError(err).Error()
 		return nil, err
 	}
+
+	logger.Infof("sandbox descriptor: %+v", request.Options)
 
 	logger.WithFields(logrus.Fields{
 		"bundle":     request.Bundle,
