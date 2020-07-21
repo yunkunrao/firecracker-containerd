@@ -93,7 +93,7 @@ builder_stamp:
 # you can use
 # $ make rootfs.img-in-docker
 %-in-docker: builder_stamp
-	docker run --rm \
+	docker run --net host --rm \
 		--security-opt=apparmor=unconfined \
 		--volume $(CURDIR):/src \
 		--volume /src/tmp \

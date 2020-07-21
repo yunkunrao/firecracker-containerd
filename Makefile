@@ -289,14 +289,14 @@ $(FIRECRACKER_DIR)/Cargo.toml:
 	git submodule update --init --recursive $(FIRECRACKER_DIR)
 
 tools/firecracker-builder-stamp: tools/docker/Dockerfile.firecracker-builder
-	docker build \
+	docker build --network host \
 		-t localhost/$(FIRECRACKER_BUILDER_NAME):$(DOCKER_IMAGE_TAG) \
 		-f tools/docker/Dockerfile.firecracker-builder \
 		tools/docker
 	touch $@
 
 $(FIRECRACKER_BIN) $(JAILER_BIN): $(FIRECRACKER_DIR)/Cargo.toml tools/firecracker-builder-stamp
-	docker run --rm -it --user $(UID) \
+	docker run --net host --rm -it --user $(UID) \
 		--volume $(CURDIR)/$(FIRECRACKER_DIR):/src \
 		--volume $(CARGO_CACHE_VOLUME_NAME):/usr/local/cargo/registry \
 		-e HOME=/tmp \
